@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:hive/hive.dart';
+import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Hive.initFlutter();
+  await Hive.deleteBoxFromDisk('tasks');
 
   runApp(const SwipeChecklistApp());
 }
@@ -18,15 +19,59 @@ class SwipeChecklistApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Checklist Pro',
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0F172A),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF111827),
-          elevation: 0,
+      ),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    Timer(const Duration(seconds: 3), () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const HomeScreen(),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(
+              Icons.check_circle,
+              size: 120,
+              color: Colors.deepPurple,
+            ),
+            SizedBox(height: 20),
+            Text(
+              'CHECKLIST PRO',
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
       ),
-      home: const HomeScreen(),
     );
   }
 }
@@ -51,59 +96,94 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Box taskBox;
 
-  final List<String> defaultTasks = List.generate(
-    50,
-    (index) => 'Daily Task ${index + 1}',
-  );
+  int streak = 0;
 
   List<Task> tasks = [];
-
   List<Task> finishedTasks = [];
   List<Task> pendingTasks = [];
 
-  int streak = 12;
+  final List<String> defaultTasks = [
+    "Core Philosophy | Do NOT position as placement guarantee",
+    "Core Philosophy | Position as capability + confidence + clarity",
+    "Core Philosophy | Focus on transformation",
+    "Core Philosophy | Build trust before promises",
+    "Core Philosophy | Optimize long-term goodwill",
+    "Student Needs | Help students feel smarter",
+    "Student Needs | Help students understand technology practically",
+    "Student Needs | Help students gain confidence",
+    "Student Needs | Help students stop feeling behind",
+    "Student Needs | Help students build self-belief",
+    "Student Needs | Help students gain direction",
+    "Product Design | Use real-world case studies",
+    "Product Design | Teach through Swiggy systems",
+    "Product Design | Teach through UPI systems",
+    "Product Design | Teach through WhatsApp systems",
+    "Product Design | Teach through Netflix systems",
+    "Product Design | Teach through Instagram systems",
+    "Product Design | Focus practical understanding",
+    "Product Design | Reduce theory-heavy learning",
+    "Product Design | Make students build early",
+    "Avoid Becoming | NOT another coding academy",
+    "Avoid Becoming | NOT another LMS",
+    "Avoid Becoming | NOT fake-placement marketing",
+    "Avoid Becoming | NOT tutorial dumping",
+    "Become | A builder mindset platform",
+    "Become | A capability acceleration system",
+    "Become | A confidence-building ecosystem",
+    "Become | A transformation-oriented community",
+    "Emotional Outcomes | Students feel sharper",
+    "Emotional Outcomes | Students feel capable",
+    "Emotional Outcomes | Students feel direction",
+    "Community Layer | Create peer groups",
+    "Community Layer | Encourage student showcases",
+    "Community Layer | Build public progress systems",
+    "Community Layer | Celebrate student projects",
+    "Community Layer | Create accountability systems",
+    "Career Support | Resume guidance",
+    "Career Support | Mock interviews",
+    "Career Support | Project reviews",
+    "Career Support | Internship exposure",
+    "Career Support | Networking opportunities",
+    "Career Support | Career direction sessions",
+  ];
 
   @override
   void initState() {
     super.initState();
 
-    openBox();
+    initializeApp();
   }
 
-  Future<void> openBox() async {
+  Future<void> initializeApp() async {
     taskBox = await Hive.openBox('tasks');
 
-    await checkDailyReset();
+    await loadStreak();
+    await loadTasks();
 
-    loadTasks();
+    showYesterdayReport();
   }
 
-  Future<void> checkDailyReset() async {
+  Future<void> loadStreak() async {
     SharedPreferences prefs =
         await SharedPreferences.getInstance();
 
-    String today =
-        DateTime.now().toString().split(' ')[0];
+    streak = prefs.getInt('streak') ?? 0;
 
-    String? lastOpened =
-        prefs.getString('last_opened');
-
-    if (lastOpened != today) {
-      await taskBox.put(
-        'taskList',
-        defaultTasks,
-      );
-
-      await prefs.setString(
-        'last_opened',
-        today,
-      );
-    }
+    setState(() {});
   }
 
-  void loadTasks() {
-    List savedTasks =
-        taskBox.get('taskList', defaultValue: []);
+  Future<void> saveStreak() async {
+    SharedPreferences prefs =
+        await SharedPreferences.getInstance();
+
+    await prefs.setInt('streak', streak);
+  }
+
+  Future<void> loadTasks() async {
+    List savedTasks = taskBox.get(
+      'taskList',
+      defaultValue: defaultTasks,
+    );
 
     setState(() {
       tasks = savedTasks
@@ -124,24 +204,96 @@ class _HomeScreenState extends State<HomeScreen> {
     taskBox.put('taskList', taskTitles);
   }
 
-  void finishTask(Task task) {
-    setState(() {
-      task.status = 'Finished';
-      finishedTasks.add(task);
-      tasks.remove(task);
-      streak++;
+  Future<void> updateCounts() async {
+    SharedPreferences prefs =
+        await SharedPreferences.getInstance();
 
-      saveTasks();
-    });
+    await prefs.setInt(
+      'completed_count',
+      finishedTasks.length,
+    );
+
+    await prefs.setInt(
+      'pending_count',
+      pendingTasks.length,
+    );
   }
 
-  void doLater(Task task) {
+  void finishTask(Task task) async {
     setState(() {
-      pendingTasks.add(task);
+      finishedTasks.add(task);
+
       tasks.remove(task);
 
-      saveTasks();
+      streak++;
     });
+
+    await saveStreak();
+
+    saveTasks();
+
+    updateCounts();
+  }
+
+  void doLater(Task task) async {
+    setState(() {
+      pendingTasks.add(task);
+
+      tasks.remove(task);
+    });
+
+    saveTasks();
+
+    updateCounts();
+  }
+
+  Future<void> showYesterdayReport() async {
+    SharedPreferences prefs =
+        await SharedPreferences.getInstance();
+
+    int completed =
+        prefs.getInt('completed_count') ?? 0;
+
+    int pending =
+        prefs.getInt('pending_count') ?? 0;
+
+    Future.delayed(
+      const Duration(seconds: 1),
+      () {
+        if (!mounted) return;
+
+        showDialog(
+          context: context,
+          builder: (_) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(25),
+              ),
+              title: const Text('Yesterday Report'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Completed : $completed'),
+                  const SizedBox(height: 10),
+                  Text('Pending : $pending'),
+                  const SizedBox(height: 10),
+                  Text('Current Streak : $streak 🔥'),
+                ],
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -149,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       drawer: Drawer(
         backgroundColor: const Color(0xFF111827),
-        child: Column(
+        child: ListView(
           children: [
             const DrawerHeader(
               child: Column(
@@ -158,10 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   CircleAvatar(
                     radius: 35,
                     backgroundColor: Colors.deepPurple,
-                    child: Icon(
-                      Icons.check,
-                      size: 40,
-                    ),
+                    child: Icon(Icons.check, size: 40),
                   ),
                   SizedBox(height: 20),
                   Text(
@@ -178,11 +327,33 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.pending_actions),
               title: const Text('Pending Tasks'),
               trailing: Text('${pendingTasks.length}'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TaskPage(
+                      title: 'Pending Tasks',
+                      tasks: pendingTasks,
+                    ),
+                  ),
+                );
+              },
             ),
             ListTile(
               leading: const Icon(Icons.done_all),
               title: const Text('Finished Tasks'),
               trailing: Text('${finishedTasks.length}'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TaskPage(
+                      title: 'Finished Tasks',
+                      tasks: finishedTasks,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -191,9 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: true,
         title: const Text(
           'Checklist Pro',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: Column(
@@ -205,8 +374,8 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [
-                  Color(0xFF7C3AED),
-                  Color(0xFF4F46E5),
+                  Colors.deepPurple,
+                  Colors.indigo,
                 ],
               ),
               borderRadius: BorderRadius.circular(30),
@@ -221,11 +390,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const Text(
                       'Current Streak',
-                      style: TextStyle(fontSize: 18),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '$streak Days 🔥',
+                      '$streak 🔥',
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -241,14 +409,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 20),
           Expanded(
             child: tasks.isEmpty
                 ? const Center(
                     child: Text(
                       'All Tasks Completed',
                       style: TextStyle(
-                        fontSize: 26,
+                        fontSize: 28,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -264,67 +432,33 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Dismissible(
                         key: Key(task.title),
                         background: Container(
-                          alignment:
-                              Alignment.centerLeft,
-                          padding:
-                              const EdgeInsets.only(left: 30),
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(left: 30),
                           decoration: BoxDecoration(
                             color: Colors.green,
-                            borderRadius:
-                                BorderRadius.circular(35),
+                            borderRadius: BorderRadius.circular(35),
                           ),
-                          child: const Column(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                color: Colors.white,
-                                size: 55,
-                              ),
-                              SizedBox(height: 10),
-                              Text(
-                                'FINISHED',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
+                          child: const Text(
+                            'FINISHED',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         secondaryBackground: Container(
-                          alignment:
-                              Alignment.centerRight,
-                          padding:
-                              const EdgeInsets.only(right: 30),
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 30),
                           decoration: BoxDecoration(
                             color: Colors.orange,
-                            borderRadius:
-                                BorderRadius.circular(35),
+                            borderRadius: BorderRadius.circular(35),
                           ),
-                          child: const Column(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.watch_later,
-                                color: Colors.white,
-                                size: 55,
-                              ),
-                              SizedBox(height: 10),
-                              Text(
-                                'DO LATER',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
+                          child: const Text(
+                            'DO LATER',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         onDismissed: (direction) {
@@ -336,131 +470,64 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
                         },
                         child: Container(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 15,
-                            vertical: 20,
-                          ),
+                          margin: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(25),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
                               colors: [
                                 Color(0xFF1E293B),
                                 Color(0xFF0F172A),
                               ],
                             ),
-                            borderRadius:
-                                BorderRadius.circular(35),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black54,
-                                blurRadius: 20,
-                                spreadRadius: 3,
+                            borderRadius: BorderRadius.circular(35),
+                          ),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                  horizontal: 15,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple,
+                                  borderRadius:
+                                      BorderRadius.circular(20),
+                                ),
+                                child: const Text('WORK'),
+                              ),
+                              const Spacer(),
+                              const Center(
+                                child: Icon(
+                                  Icons.assignment_turned_in,
+                                  size: 90,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                task.title,
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Swipe Right → Finished',
+                                style: TextStyle(
+                                  color: Colors.greenAccent,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Swipe Left ← Do Later',
+                                style: TextStyle(
+                                  color: Colors.orangeAccent,
+                                ),
                               ),
                             ],
-                            border: Border.all(
-                              color: Colors.white12,
-                            ),
-                          ),
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.all(20),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment
-                                            .spaceBetween,
-                                    children: [
-                                      Container(
-                                        padding:
-                                            const EdgeInsets
-                                                .symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              Colors.deepPurple,
-                                          borderRadius:
-                                              BorderRadius
-                                                  .circular(20),
-                                        ),
-                                        child: const Text(
-                                          'WORK',
-                                          style: TextStyle(
-                                            fontWeight:
-                                                FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      const Icon(
-                                        Icons.more_vert,
-                                        color:
-                                            Colors.white70,
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 40),
-                                  const Center(
-                                    child: Icon(
-                                      Icons.assignment_turned_in,
-                                      size: 90,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 40),
-                                  Text(
-                                    task.title,
-                                    style: const TextStyle(
-                                      fontSize: 30,
-                                      fontWeight:
-                                          FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 20),
-                                  const Text(
-                                    'Swipe Right → Finished',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.greenAccent,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  const Text(
-                                    'Swipe Left ← Do Later',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.orangeAccent,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 40),
-                                  Container(
-                                    width: double.infinity,
-                                    padding:
-                                        const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white10,
-                                      borderRadius:
-                                          BorderRadius.circular(20),
-                                    ),
-                                    child: const Center(
-                                      child: Text(
-                                        'Priority : High',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           ),
                         ),
                       );
@@ -469,56 +536,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton:
-          FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.deepPurple,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Task'),
+        child: const Icon(Icons.add),
         onPressed: () {
           TextEditingController controller =
               TextEditingController();
 
           showDialog(
             context: context,
-            builder: (context) {
+            builder: (_) {
               return AlertDialog(
-                backgroundColor:
-                    const Color(0xFF1E293B),
-                shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(25),
-                ),
-                title: const Text('Add New Task'),
+                backgroundColor: const Color(0xFF1E293B),
+                title: const Text('Add Task'),
                 content: TextField(
                   controller: controller,
-                  style: const TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Enter task name',
-                    hintStyle: const TextStyle(
-                      color: Colors.white54,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white10,
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(15),
-                    ),
-                  ),
                 ),
                 actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Cancel'),
-                  ),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          Colors.deepPurple,
-                    ),
                     onPressed: () {
                       if (controller.text.isNotEmpty) {
                         setState(() {
@@ -528,9 +563,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               status: 'Pending',
                             ),
                           );
-
-                          saveTasks();
                         });
+
+                        saveTasks();
                       }
 
                       Navigator.pop(context);
@@ -543,6 +578,38 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+class TaskPage extends StatelessWidget {
+  final String title;
+  final List<Task> tasks;
+
+  const TaskPage({
+    super.key,
+    required this.title,
+    required this.tasks,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+      ),
+      body: tasks.isEmpty
+          ? Center(
+              child: Text('No $title'),
+            )
+          : ListView.builder(
+              itemCount: tasks.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Text(tasks[index].title),
+                );
+              },
+            ),
     );
   }
 }
